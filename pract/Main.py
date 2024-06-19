@@ -27,9 +27,10 @@ def is_valid_length(text):
 # Функция для отправки сообщения с выбором действия
 def send_action_choice(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    onas = types.KeyboardButton('/onas')
     reg_button = types.KeyboardButton('/register')
     auth_button = types.KeyboardButton('/authorize')
-    markup.add(reg_button, auth_button)
+    markup.add(onas,reg_button, auth_button)
     bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
 
 # Функция для отправки меню пользователя после авторизации
@@ -38,7 +39,8 @@ def send_user_menu(user_id):
     profile_button = types.KeyboardButton('/profile')
     subscription_button = types.KeyboardButton('/buy_subscription')
     logout_button = types.KeyboardButton('/logout')
-    markup.add(profile_button, subscription_button, logout_button)
+    zal_msc = types.KeyboardButton('/zal_msc')
+    markup.add(profile_button, subscription_button, logout_button,zal_msc)
     bot.send_message(user_id, "Добро пожаловать! Выберите действие:", reply_markup=markup)
 
 # Обработчик команды /start
@@ -61,7 +63,44 @@ def handle_authorize(message):
     states[user_id] = 'authorize_phone'
     bot.send_message(user_id, "Введите ваш номер телефона для авторизации (не более 20 символов):")
 
-# Обработчик команды /profile
+# Обработчик команды /onas
+@bot.message_handler(commands=['onas'])
+def handle_authorize(message):
+    user_id = str(message.from_user.id)  # Приведение user_id к строке
+    bot.send_message(user_id, "Добро пожаловать в наш новый фитнес-зал, где мы верим, что каждый может достичь своих целей по здоровью и физической форме! Мы — молодая и динамичная команда, стремящаяся предоставить вам лучшие условия для тренировок и самосовершенствования.")
+    bot.send_message(user_id,"Наши цели: \nМы создали это пространство с одной целью — сделать фитнес доступным, удобным и эффективным для каждого. Наша миссия — вдохновлять и поддерживать вас на пути к лучшей версии себя.")
+    bot.send_message(user_id,"Что мы предлагаем \nСовременное оборудование: Наш зал оснащён новейшими тренажёрами и оборудованием, чтобы ваши тренировки были максимально эффективными и безопасными. \nПрофессиональные тренеры: Наша команда сертифицированных специалистов поможет вам разработать персональный план тренировок и достигнуть ваших целей. \nШирокий выбор занятий: Мы предлагаем разнообразные групповые занятия, такие как йога, пилатес, кроссфит и другие, чтобы каждый мог найти что-то по душе. \nУдобное расположение: Мы находимся в самом сердце города, и вам будет удобно нас посещать в любое время.\nДоступные цены: Мы предлагаем гибкие тарифы и абонементы, чтобы каждый мог выбрать подходящий для себя вариант")
+    bot.send_message(user_id,"Присоединяйтесь к нам! \nЕсли вы ищете место, где можно не только эффективно тренироваться, но и получить поддержку и вдохновение на пути к здоровому образу жизни, мы будем рады видеть вас в нашем зале! Присоединяйтесь к нашему сообществу и начните свой путь к лучшей версии себя уже сегодня.")
+# Обработчик команды /zal_msc
+@bot.message_handler(commands=['zal_msc'])
+def handle_profile(message):
+    user_id = str(message.from_user.id)  # Приведение user_id к строке
+
+    try:
+        conn = psycopg2.connect(dbname=dbname, user=user, password=password, host=host, port=port)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT name, address, phone FROM fitnessclub WHERE address LIKE '%Москва%'",
+            )
+        zal_msc = cursor.fetchone()
+
+        if zal_msc:
+            name, address,phone = zal_msc
+
+            bot.send_message(user_id,
+                             f"Наши спорт залы:\nНазвание клуба: {name}\nадрес: {address}\nномер телефона: {phone}")
+        else:
+            bot.send_message(user_id, "Спорт зал не найден.")
+
+    except psycopg2.Error as e:
+        bot.send_message(user_id, f'Произошла ошибка при работе с базой данных: {e}')
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 @bot.message_handler(commands=['profile'])
 def handle_profile(message):
@@ -112,8 +151,10 @@ def handle_admin_menu(message):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         profile_button = types.KeyboardButton('/profile')
         view_by_phone_button = types.KeyboardButton('/view_profile_by_phone')
+        add_subscribe = types.KeyboardButton('/add_subscribe')
+        remove_subscribe = types.KeyboardButton('/remove_subscribe')
         logout_button = types.KeyboardButton('/logout')
-        markup.add(profile_button, view_by_phone_button, logout_button)
+        markup.add(profile_button, view_by_phone_button, logout_button,add_subscribe,remove_subscribe)
 
         bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
 
@@ -157,6 +198,103 @@ def handle_view_profile_by_phone(message):
 
     except psycopg2.Error as e:
         bot.send_message(user_id, f'Произошла ошибка при работе с базой данных: {e}')
+
+# Обработчик команды /remove_subscribe
+@bot.message_handler(commands=['remove_subscribe'])
+def handle_remove_subscribe(message):
+    user_id = str(message.from_user.id)  # Приведение user_id к строке
+
+    try:
+        # Проверяем статус администратора
+        if not is_user_admin(user_id):
+            bot.send_message(user_id, "У вас нет доступа к этой функции.")
+            return
+
+        # Запрос на ввод номера телефона
+        msg = bot.send_message(user_id, "Введите номер телефона пользователя для снятия подписки:")
+        bot.register_next_step_handler(msg, process_remove_phone_number)
+
+    except Exception as e:
+        bot.send_message(user_id, f'Произошла ошибка: {e}')
+
+
+def process_remove_phone_number(message):
+    user_id = str(message.from_user.id)
+    phone_number = message.text.strip()
+
+    if not phone_number.isdigit():
+        msg = bot.send_message(user_id, "Неверный формат номера телефона. Пожалуйста, введите номер телефона ещё раз:")
+        bot.register_next_step_handler(msg, process_remove_phone_number)
+        return
+
+    try:
+        conn = psycopg2.connect(dbname=dbname, user=user, password=password, host=host, port=port)
+        cursor = conn.cursor()
+
+        # Снятие подписки
+        cursor.execute("UPDATE Clients SET active_subscription = FALSE WHERE phone = %s", (phone_number,))
+        conn.commit()
+
+        if cursor.rowcount > 0:
+            bot.send_message(user_id, f"Подписка успешно снята для номера {phone_number}.")
+        else:
+            bot.send_message(user_id, f"Пользователь с номером {phone_number} не найден.")
+
+    except psycopg2.Error as e:
+        bot.send_message(user_id, f'Произошла ошибка при работе с базой данных: {e}')
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+# Обработчик команды /add_subscribe
+@bot.message_handler(commands=['add_subscribe'])
+def handle_view_profile_by_phone(message):
+    user_id = str(message.from_user.id)  # Приведение user_id к строке
+
+    try:
+        # Проверяем статус администратора
+        if not is_user_admin(user_id):
+            bot.send_message(user_id, "У вас нет доступа к этой функции.")
+            return
+
+        # Запрос на ввод номера телефона
+        msg = bot.send_message(user_id, "Введите номер телефона пользователя для добавления ему подписки:")
+        bot.register_next_step_handler(msg, process_phone_number)
+
+    except Exception as e:
+        bot.send_message(user_id, f'Произошла ошибка: {e}')
+
+# Обработчик команды /add_subscribe
+def process_phone_number(message):
+    user_id = str(message.from_user.id)
+    phone_number = message.text.strip()
+
+    if not phone_number.isdigit():
+        msg = bot.send_message(user_id, "Неверный формат номера телефона. Пожалуйста, введите номер телефона ещё раз:")
+        bot.register_next_step_handler(msg, process_phone_number)
+        return
+
+    try:
+        conn = psycopg2.connect(dbname=dbname, user=user, password=password, host=host, port=port)
+        cursor = conn.cursor()
+
+        # Добавление подписки
+        cursor.execute("UPDATE Clients SET active_subscription = TRUE WHERE phone = %s", (phone_number,))
+        conn.commit()
+
+        bot.send_message(user_id, f"Подписка успешно добавлена для номера {phone_number}.")
+
+    except psycopg2.Error as e:
+        bot.send_message(user_id, f'Произошла ошибка при работе с базой данных: {e}')
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 # Обработчик текстовых сообщений (для ввода номера телефона)
@@ -219,10 +357,10 @@ def handle_buy_subscription(message):
     try:
         conn = psycopg2.connect(dbname=dbname, user=user, password=password, host=host, port=port)
         cursor = conn.cursor()
-
-        cursor.execute("UPDATE Clients SET active_subscription = TRUE WHERE client_id = %s", (user_id,))
+        bot.send_message(user_id, "Чтобы активировать подписку надо перейти по сылке ниже и перевести 200р с коментарием вашего номера телефона")
+        bot.send_message(user_id, "https://www.tinkoff.ru/cf/4UizRjPEyiO")
+        bot.send_message(user_id, "После оплаты подписка активируеться через несколь ко минут")
         conn.commit()
-        bot.send_message(user_id, "Подписка успешно активирована!")
 
     except psycopg2.Error as e:
         bot.send_message(user_id, f'Произошла ошибка при работе с базой данных: {e}')
